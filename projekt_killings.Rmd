@@ -1,0 +1,298 @@
+---
+#przed wykokaniem wykonać w pliku .R:
+  #install.packages('fivethirtyeightdata', repos = 'https://fivethirtyeightdata.github.io/drat/', type = 'source')
+#install.packages("ggrepel") # must have
+#install.packages("rmdformats") #must have
+#install.packages("maps") #must have
+title: "Policyjne zabójstwa Amerykanów w 2015 roku - analiza eksporacyjna"
+author: "Szymon Tlałka, Katarzyna Bortel"
+date: 'Czerwiec 2022'
+output: 
+ rmdformats::downcute:
+    highlight: tango
+    code_folding: hide
+    lightbox: true
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(ggrepel)
+```
+# Wprowadzenie
+
+Celem projektu jest eksploracja danych o zabójtwach dokonanych przez policje w roku 2015. Dane pochodzą z brytyjskiego dziennika TheGuardian. Dane Guardiana zostały pobrane 2 czerwca 2015 r.
+Więcej informacji o jego bazie danych można znaleźć [tutaj](https://www.theguardian.com/us-news/ng-interactive/2015/jun/01/about-the-counted).
+Baza danych została także wzbogacona o dane z Amerykańskiego spisu statystycznego.
+
+
+## Obróbka danych
+
+Dane wczytano bezpośrednio z bazy dostępnej na [GitHubie](https://github.com/fivethirtyeight/data/tree/master/police-killings)
+
+```{r}
+police <- read.csv("https://raw.githubusercontent.com/fivethirtyeight/data/master/police-killings/police_killings.csv")
+```
+
+Baza zawiera `r nrow(police)` rekordów i `r ncol(police)` zmiennych. Każdy rekord zawiera informacje o jednej zabitej osobie.
+
+## Wykorzystane zmienne
+W dalszej analizie wykorzystano następujące zmienne:
+
+| Zmienna             | Opis          
+| --------------------|:-------------------------------------------
+| *gender*            | płeć zabitego
+| *raceethnicity*     | rasa/etniczność zabitego
+| *city*              | miasto zabójstwa
+| *state*             | stan
+| *cause*             | przyczyna śmierci
+| *armed*             | jak/czy zmarły był uzbrojony
+
+# Analizy
+Przeprowadzone analizy obejmowały następujące zagadnienia:<br>
+- analize przestrzenną - stanów w USA,<br>
+- analiza sposobu zabójstwa,<br>
+- analize zabitych - wiek, płeć,<br>
+
+## Analiza Przestrzenna
+Zacznijmy od analizy przestrzennej z podziałem na stany.<br>
+Celem tej analizy jest sprawdzenie, czy można zaobserwować jakieś wzorce związane ze stanem. <br><br>
+Liczba osób zabitych w danym stanie (10 stanów z największą liczbą)
+```{r}
+police.people <- police %>%
+    group_by(state) %>% 
+    count(gender) %>%
+    pivot_wider(names_from = gender, values_from = n, values_fill = 0) %>% 
+    mutate(suma = Male + Female) %>% 
+    arrange(desc(suma)) %>% 
+    head(n=10)
+  
+  knitr::kable(police.people, col.names=c("stan", "Mężczyźni","Kobiety","Suma")) 
+  
+```
+CA - Kalifornia, TX - Teksas, FL - Floryda, AZ - Arizona, Ok - Oklahoma, GA - Georgia, NY - Nowy Jork, CO - Kolorado, IL - Illinois, LA - Luizjana <br><br>
+Stanem z największą liczbą ofiar jest Kalifornia, drugim Teksas a trzecim Floryda. Może to być spowodowane faktem iż stany te posiadają największą populacje dokładnie w takiej samej kolejności [źródło](https://en.wikipedia.org/wiki/List_of_U.S._states_and_territories_by_population)
+```{r}
+police %>%
+    ggplot(aes(x=state))+
+    geom_bar(aes(fill=gender))+
+    coord_flip()+
+    theme_bw()+
+    theme(legend.position="none")+theme(
+    panel.background = element_rect(fill = 'gray19', colour = 'gray19'),
+    plot.background = element_rect(fill = 'gray19', colour = 'gray19'),
+    legend.background = element_rect(fill = 'gray19', colour = 'gray19'),
+    axis.text = element_text(colour = "white"),
+    legend.text = element_text(colour = "white"),
+    legend.title = element_text(colour = "white"),
+    axis.title.x = element_text(colour = "white"),
+    axis.title.y = element_text(colour = "white"),
+    plot.title = element_text(colour = "white"),
+    panel.grid.major.y = element_blank())+
+  ylab("Liczba zabitych")+
+  xlab("Stan")+
+  ggtitle("Liczba zabitych osób w odpowiednich stanach")
+```
+Wykres kolumnowy przedstawiający rozkład ofiar dla każdego stanu  idealnie pokazuje, że większość ofiar stanowili mężczyzni. <br>
+```{r}
+police.city <-   police %>% 
+    count(city,state) %>% 
+    arrange(desc(n)) %>% 
+    head(n=10)
+
+knitr::kable(police.city, col.names=c("Miasto", "Stan","Liczba zdarzeń"))
+```
+Miastem z największą liczbą zabójst (9) było Los Angeles w stanie Kalifornia, drugim (6) - Houston  w stanie Teksas oraz Phoenix w stanie Arizona<br><br>
+
+## Sposób zabójstwa
+W zbiorze danych możemy znaleźć inforamcje o tym w jaki sposób osoba została zabita.<br>
+
+```{r}
+police %>% 
+    count(cause) %>% 
+    ggplot(aes(x=cause, y=n))+
+    geom_col(aes(fill=cause)) +
+    xlab("Przyczyna śmierci") + ylab("Liczba")+
+  scale_fill_manual(values =c("green","red3", "bisque", "yellow", "blue"))+
+  theme(
+    legend.key = element_rect(fill = "gray19"),
+    panel.background = element_rect(fill = 'gray19', colour = 'gray19'),
+    plot.background = element_rect(fill = 'gray19', colour = 'gray19'),
+    legend.background = element_rect(fill = 'gray19', colour = 'gray19'),
+    axis.text = element_text(colour = "white"),
+    legend.text = element_text(colour = "white"),
+    legend.title = element_text(colour = "white"),
+    axis.title.x = element_text(colour = "white"),
+    plot.title = element_text(colour = "white"),
+    axis.title.y = element_text(colour = "white"))+
+    labs(fill = "Przyczyna śmierci")+
+    ggtitle("Przyczyny śmierci zmarłych")
+```
+```{r}
+police.cause <- police %>% 
+    count(cause) %>% 
+    mutate(Percentage = (n/sum(n))*100)
+  
+  knitr::kable(police.cause, col.names=c("Przyczyna śmierci", "Liczba","Procent"))
+```
+Możemy zaobserwować tutaj że przytłaczającą większość śmierci była spowodowana postrzałem
+broni palnej, Śmierć z powodu porażenia paralizatorem poniosło praktycznie tyle samo osób co
+przez pozostałe 3 sposoby.<br>
+```{r}
+police2 <- police %>% 
+  filter( cause != "Gunshot") %>% 
+  filter(longitude > -140)
+us <- map_data("state")
+  ggplot() +
+    geom_map(data = us, map = us, aes(map_id = region) ,fill = "grey", color = "white") +
+    geom_point(data = police2, aes(x = longitude, y = latitude, color = cause,), size = 2)+
+    scale_color_manual(values =c("green", "bisque", "yellow", "blue"))+
+    theme_bw()+
+    theme(
+      legend.key = element_rect(fill = "gray19"),
+      panel.background = element_rect(fill = 'gray19', colour = 'gray19'),
+      plot.background = element_rect(fill = 'gray19', colour = 'gray19'),
+      legend.background = element_rect(fill = 'gray19', colour = 'gray19'),
+      axis.text = element_text(colour = "white"),
+      legend.text = element_text(colour = "white"),
+      legend.title = element_text(colour = "white"),
+      axis.title.x = element_text(colour = "white"),
+      axis.title.y = element_text(colour = "white"),
+      plot.title = element_text(colour = "white"),
+      panel.grid.major.y = element_blank())+
+      ylab("")+
+      xlab("")+
+      ggtitle("Przyczyny śmierci na mapie (z pominięciem Gunshot)")+
+      guides(color=guide_legend(title="Przyczyna śmierci"))
+```
+Możemy tutaj zaobserwować że tylko na Florydzie zdarzają nieokreślone sposoby śmierci.<br><br>
+```{r}
+police %>% 
+    count(armed) %>% 
+    arrange(desc(n)) %>% 
+    ggplot(aes(x=armed, y=n))+
+    geom_col(aes(fill=armed))+
+    xlab("Uzbrojenie") + ylab(" ")+
+  scale_fill_manual(values =c("yellow1", "slateblue3", "red1", "tan1","springgreen3","navajowhite","turquoise2","palevioletred3"))+
+    theme(
+      legend.key = element_rect(fill = "gray19"),
+      panel.background = element_rect(fill = 'gray19', colour = 'gray19'),
+      plot.background = element_rect(fill = 'gray19', colour = 'gray19'),
+      legend.background = element_rect(fill = 'gray19', colour = 'gray19'),
+      axis.text = element_text(colour = "white"),
+      legend.text = element_text(colour = "white"),
+      legend.title = element_text(colour = "white"),
+      axis.title.x = element_text(colour = "white"),
+      plot.title = element_text(colour = "white"),
+      axis.title.y = element_text(colour = "white"))+
+      labs(fill = "Jakie uzbrojenie")+
+      ggtitle("Uzbrojenie ofiar")
+```
+<br>
+Możemy zobaczyć tutaj że najwięcej zmarłych było uzbrojonych w broń palną, drugą najliczniejszą grupe stanowiły osoby nieuzbrojone, a trzecią osoby uzbrojone w nóż.
+```{r}
+police.armed.race <- police %>% 
+    count(armed,raceethnicity) %>% 
+    arrange(desc(n)) %>% 
+    head(n=10)
+    
+  knitr::kable(police.armed.race, col.names=c("Uzbrojenie", "Pochodzenie","Liczba przypadków"))
+```
+Widać tutaj że najczęściej umierali ludzie pochodzenia białego, uzbrojeni w broń palną (120), zaraz po nich znajdują się ludzie pochodzenia czarnego, uzbrojeni w broń palną(66), trzecie miejsce zajmują ludzie pochodzenia białego nieuzbrojeni.
+<br>
+
+
+## Analiza Pochodzenia
+W tym miejscu analizę eksploracyjną skoncentrowano na pochodzeniu ofiar ataków. Sprawdzono wiek oraz płeć sprawców.
+```{r}
+police %>% 
+  count(raceethnicity) %>% 
+  ggplot(aes(x=raceethnicity, y=n))+
+  geom_col(aes(fill=raceethnicity))+
+  scale_fill_manual(values =c("gold2", "saddlebrown", "red", "blue","green","navajowhite"))+
+  theme(
+    legend.key = element_rect(fill = "gray19"),
+    panel.background = element_rect(fill = 'gray19', colour = 'gray19'),
+    plot.background = element_rect(fill = 'gray19', colour = 'gray19'),
+    legend.background = element_rect(fill = 'gray19', colour = 'gray19'),
+    axis.text = element_text(colour = "white"),
+    legend.text = element_text(colour = "white"),
+    legend.title = element_text(colour = "white"),
+    axis.title.x = element_text(colour = "white"),
+    plot.title = element_text(colour = "white"),
+    axis.title.y = element_text(colour = "white"))+
+  ylab("")+
+  xlab("Pochodzenie")+
+  ggtitle("Liczba ofiar w podziale na rasę")+
+  labs(fill = "Pochodzenie")
+```
+<br>Z wykresu możemy odczytać, że najwięcej ofiar to osoby rasy białej, dużo niżej znajdują się osoby rasy czarnej<br><br>
+```{r}
+police.kill <- police %>% 
+    count(raceethnicity) %>% 
+    mutate(Percentage = (n/sum(n))*100)
+
+knitr::kable(police.kill, col.names=c("Pochodzenie", "Liczba","Procent"))
+```
+Najwięcej osób które zginęły było pochodzenia białego, drugą najlczniejszą grupe stanowiły pochodzenia czarnego, a trzecią grupe stanowiły osoby pochodzenia latynoskiego<br><br>
+
+Mapa pokazująca w jakich miejscach zostały zabite osoby danego pochodzenia (dla większej czytelności pominięto incydenty z Hawajów i Alaski) <br> 
+```{r}
+  police1 <- police %>% 
+    filter(longitude > -140)
+  
+  us <- map_data("state")
+  ggplot() +
+    geom_map(data = us, map = us, aes(map_id = region) ,fill = "grey", color = "white") +
+    geom_point(data = police1, aes(x = longitude, y = latitude, color = raceethnicity,), size = 2)+
+    scale_color_manual(values =c("gold2", "black", "red", "blue","green","bisque"))+
+    theme_bw()+
+    theme(
+      legend.key = element_rect(fill = "gray19"),
+      panel.background = element_rect(fill = 'gray19', colour = 'gray19'),
+      plot.background = element_rect(fill = 'gray19', colour = 'gray19'),
+      legend.background = element_rect(fill = 'gray19', colour = 'gray19'),
+      axis.text = element_text(colour = "white"),
+      legend.text = element_text(colour = "white"),
+      legend.title = element_text(colour = "white"),
+      axis.title.x = element_text(colour = "white"),
+      axis.title.y = element_text(colour = "white"),
+      plot.title = element_text(colour = "white"),
+      panel.grid.major.y = element_blank())+
+    ylab("")+
+    xlab("")+
+    ggtitle("Zabici z podziałem na pochodzenie")+
+    guides(color=guide_legend(title="Pochodzenie"))
+```
+<br>Na mapie możemy zaobserwować że większość osób pochodzenia Latynoskiego zginęło
+w południowo - zachodniej części kraju. Wpływ na to mogła mieć chęć emigracji z graniczącego ze
+Stanami Meksyku. Zgony osób pochodzenia białego rozłożone są jednorodnie po całym kraju.
+Możemy jednak zauważyć iż bardziej na wschód tym bardziej można zaobserwować zgony osób 
+pochodzenia czarnoskórego.<br><br>
+
+
+# Wnioski
+
+1.	Analiza przestrzenna wykazuje, że najwięcej zabójstw zostało dokonanych w trzech najbardziej zaludnionych stanach w kolejności odpowiedniej do liczby ludności zamieszkującej dany stan.
+2.	Aż 88% zostaje zastrzelonych.
+3.	W analizie przestrzennej możemy zauważyć dziwną zależność, że tylko na Florydzie występują nieokreślone sposoby śmierci. Osoby białe są zabijane w całej Ameryce, za to latynosi głównie w południowo-zachodniej części kraju a osoby czarnoskóre na wschodzie.
+4.	Procentowo najwięcej zabija się osób rasy białej.
+
+# Co dalej
+
+Dalsze analizy mogłyby uwzględnić:<br>
+1.	Sprawdzenie jaki procentowy udział mają ofiary danej rasy w stosunku do wszystkich osób tej rasy mieszkających w USA.<br>
+2.	Analizę zamożności ofiar.<br>
+3.	Analiza wieku ofiar.<br>
+
+
+### Źródła danych i wykorzystane pomoce:
+-https://github.com/fivethirtyeight/data/tree/master/police-killings <br>
+-https://www.theguardian.com/us-news/ng-interactive/2015/jun/01/about-the-counted <br>
+- https://en.wikipedia.org/wiki/List_of_U.S._states_and_territories_by_population <br>
+
+
+
+
